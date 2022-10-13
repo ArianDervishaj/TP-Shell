@@ -1,9 +1,10 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
 # Test the given TP shell
 #
 # Author: David Gonzalez (HEPIA) <david.dg.gonzalez@hesge.ch>
+# Author: Guillaume Chanel <guillaume.chanel@unige.ch>
 
 import sys
 import tempfile
@@ -152,6 +153,9 @@ class Shell:
             self.shell_process.kill()
             raise subprocess.TimeoutExpired('The exit command did not exit the shell after {}s'.format(timeout))
         #TODO: should I check if process is still running at that point (stream closed but process alive ?)
+
+        if self.shell_process.returncode != 0:
+            raise AssertionError('Shell process exited with an error code ({})'.format(self.shell_process.returncode))
 
 
     def read_stdout(self):
