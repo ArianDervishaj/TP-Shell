@@ -109,6 +109,18 @@ int parse_command(char *user_input, cmd_t *cmd) {
   return 0;
 }
 
+//Check is a string is composed only of a set of characters
+//OUT:
+//  str:    the string to check (does it contains some chars ?)
+//  of:     a string containing the set of characters to verify
+//  return: true is the string str is made only of chars in of, false otherwise
+static bool str_made_only_of(const char *str, const char *of) {
+  while(*str)
+    if(strchr(of, *str++) == NULL)
+      return false;
+  return true;
+}
+
 //Wait for the user input and return it
 //OUT:
 //  user_input: a string with the user input. The user should take care of the
@@ -122,6 +134,10 @@ int ask_user_input(char* user_input) {
 
   //Ensure that the end of line chars are removed
   user_input[strcspn(user_input, "\r\n")] = 0;
+
+  // if string is only made of delimiters -> replace by empty string
+  if(str_made_only_of(user_input, DELIMIERS))
+    user_input[0] = '\0';
 
   return user_input[0];
 }
