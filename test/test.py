@@ -24,6 +24,19 @@ def print_usage():
     print("                         if omitted, the script attempt to find it automatically")
 
 
+def find_last_trace(trace, f):
+    """Follow a trace to find the last onebut still belonging to file f
+    trace: a starting trace
+    f: a file as a full absolute path
+    """
+    if trace.tb_next is None:
+        return trace
+    elif trace.tb_next.tb_frame.f_code.co_filename != f:
+        return trace
+    else:
+        return find_last_trace(trace.tb_next, f)
+
+
 # TODO: move in test class (failed so far)
 test_failed = False
 def test(func):
@@ -34,7 +47,9 @@ def test(func):
             func(self)
         except Exception as e:
             print(Fore.RED + "FAILED" + Fore.RESET)
-            logging.error(f"{type(e).__name__}:{str(e)}")
+            _, _, tb = sys.exc_info()
+            tb = find_last_trace(tb, tb.tb_frame.f_code.co_filename)
+            logging.error(f"{type(e).__name__}:{str(e)} [TeacherCode:{tb.tb_lineno}]")
             test_failed = True
             return
         print(Fore.GREEN + "SUCCESS" + Fore.RESET)
