@@ -170,7 +170,7 @@ class Shell:
         #TODO: should I check if process is still running at that point (stream closed but process alive ?)
 
         if self.shell_process.returncode != 0:
-            raise AssertionError('Shell process exited with an error code ({})'.format(self.shell_process.returncode))
+            raise AssertionError('Shell process exited with an error code ({}). Standard error contains: "{}"'.format(self.shell_process.returncode, self.read_stderr()))
 
 
     def read_stdout(self):
