@@ -7,6 +7,7 @@
 # Author: Guillaume Chanel <guillaume.chanel@unige.ch>
 
 import sys
+import os
 import tempfile
 import subprocess
 from pathlib import Path
@@ -14,7 +15,8 @@ from colorama import Fore
 import logging
 import time
 import psutil
-import re
+import filecmp
+
 
 
 def print_usage():
@@ -71,6 +73,9 @@ class Cmd:
     def __iter__(self) -> str:
         for c in self.cmd:
             yield c
+
+    def __add__(self, cmd: list[str]):
+        return Cmd(self.cmd + cmd)
 
 
 class Shell:
@@ -337,6 +342,43 @@ class Test:
         self.test_builtin_exit()
         self.test_builtin_cd()
 
+    @test
+    def test_stdout_redirect(self):
+        out_file = os.path.join(tempfile.gettempdir(), 'aNameIHopeNoOneWillUse-d54vb36730')  # I want to test file creation and all tempfile creation routines create the file...
+        out_file_test = out_file + '-test'
+
+        # Delete temporary files to clean up (hoping they do not belong to an important process...)
+        if os.path.exists(out_file):
+            os.remove(out_file)
+        if os.path.exists(out_file_test):
+            os.remove(out_file_test)
+
+        # Start shell
+        shell = Shell(self.shell_exec)
+
+        # Test file creation and correct content
+        cmd = Cmd(['echo', '-e', 'First line\\nSecond line\\nThird line'])
+        def run_cmd():
+            cmd_shell = cmd + ['>', out_file]
+            shell.exec_command(cmd_shell, timeout=1)
+            with open(out_file_test, 'w') as f_out:
+                subprocess.run(cmd, stdout=f_out, encoding='utf-8')
+        run_cmd()
+        assert os.path.exists(out_file), "I/O redirection with command '{}' did not create file {}".format(cmd + ['>', out_file], out_file)
+        assert filecmp.cmp(out_file, out_file_test), "I/O redirection with command '{}' produced\n{}instead of:\n{}".format(
+            cmd + ['>', out_file],
+            Path(out_file).read_text(),
+            Path(out_file_test).read_text())
+
+        # Test that the file content is fully replaced
+        cmd = Cmd(['echo', '-e', 'First line'])
+        run_cmd()
+        assert filecmp.cmp(out_file, out_file_test), "A second I/O redirection with command '{}' produced\n{}-----\ninstead of:\n{}".format(
+            cmd + ['>', out_file],
+            Path(out_file).read_text(),
+            Path(out_file_test).read_text())
+
+        shell.exit()
 
 if __name__ == "__main__":
 
@@ -345,27 +387,13 @@ if __name__ == "__main__":
         exit(1)
 
     t = Test(sys.argv[1])
-    # Empty command
     t.test_builtin()
     t.test_foregroundjobs()
+    t.test_stdout_redirect()
 
     sys.exit(test_failed)
-    # # Long nonsensical command
-    # execute_commandon_shell(tp_dir, tp_shell_name, b'ffof  cf ee ewpqe pepfiwqnfe ff pife piwfpef pi efqplc c p fpc fpi fip qepi fpiaef pifipewq ipfqepif e pifeq fipqe pifewq pfiewa')
-    # # cd without check it works
-    # execute_commandon_shell(tp_dir, tp_shell_name, b'cd ..')
-    # # Foreground job (wait)
-    # execute_commandon_shell(tp_dir, tp_shell_name, b'sleep 2', 5)
-    # # Foreground job
-    # execute_commandon_shell(tp_dir, tp_shell_name, b'ls -alh')
-    # # Foreground job (wait) exit code
-    # execute_commandon_shell(tp_dir, tp_shell_name, b'ls klcklncnowo')
-    # # cd + foreground job (test if 'cd' work)
-    # execute_commandon_shell(tp_dir, tp_shell_name, b'cd ..\nls -alh')
-    # # stdout redirect
-    # execute_commandon_shell(tp_dir, tp_shell_name, b'ls -alh > ls.out', 3, 'ls.out')
-    # # stdout redirect and overwrite (should have same output as before)
-    # execute_commandon_shell(tp_dir, tp_shell_name, b'ls -alh > ls.out', 3, 'ls.out')
+
+
     # # Pipe
     # execute_commandon_shell(tp_dir, tp_shell_name, b'ls -alh | wc -l')
     # # Background job where shell exit right after
