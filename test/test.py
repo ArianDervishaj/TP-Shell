@@ -5,18 +5,22 @@
 #
 # Author: David Gonzalez (HEPIA) <david.dg.gonzalez@hesge.ch>
 # Author: Guillaume Chanel <guillaume.chanel@unige.ch>
+# TODO: There are many sleep functions called to wait for the shell. Would there be a way to be sure that:
+# - the shell is up and waiting for an input
+# - the shell has processed a command
+# - the shell as received and treated / ignored a signal (could be done by launching a command and waiting for it to be processed)
 
-import sys
-import os
-import tempfile
-import subprocess
-from pathlib import Path
-from colorama import Fore
-import logging
-import time
-import psutil
 import filecmp
-
+import logging
+import os
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+import psutil
+from colorama import Fore
 
 
 def print_usage():
@@ -96,6 +100,18 @@ class Shell:
         self.stderr = None
 
 
+    def is_alive(self):
+        return self.shell_process.poll() == None
+
+
+    def get_children(self):
+        return self.shell_ps.children()
+
+
+    def send_signal(self, signal):
+        self.shell_process.send_signal(signal)
+
+
     # TODO: move out of Shell ?
     def check_ophans(self, cmd: Cmd):
         """ Check if an orphan process (child of 1) was executed with cmd
@@ -138,6 +154,9 @@ class Shell:
             # as the command exceeded the timeout ?
             duration = time.time() - start_time
             if duration > timeout:
+                # Kill the children and raise timeout error
+                for c in children:
+                    c.kill()
                 raise psutil.TimeoutExpired('The process took more than the timeout ({}s) to terminate (last command executed: {})'.format(duration, self.last_cmd))
 
 
@@ -215,14 +234,19 @@ class Test:
         raise AssertionError('No exit code found')
 
 
-    def _test_command_results(self, cmd: Cmd, shell: Shell, test_stdout: str, test_stderr: str, test_return: bool):
+    def _test_command_results(self, cmd: Cmd, shell: Shell, test_stdout: str, test_stderr: str, test_return: bool, test_in_shell: bool = False):
         """ Test if the results (standard outputs and return code) of a command are the correct ones
         test_stdout/test_stderr: a string indicating if the standard output should include the normal output ('include'),
                                  be empty ('empty'), or not tested ('notest' or any other string)
         test_return: should the return code be tested (relies on the computation of the return code from the standard output)
+        test_in_shell: the command is tested in a shell instead of a direct subprocess. This is done to test commands with pipes
+                       easily.
         """
         # get "real" output
-        real = subprocess.run(cmd, cwd=tempfile.gettempdir(), capture_output=True, encoding='utf-8')
+        if test_in_shell:
+            real = subprocess.run(str(cmd), cwd=tempfile.gettempdir(), shell=True, capture_output=True, encoding='utf-8')
+        else:
+            real = subprocess.run(cmd, cwd=tempfile.gettempdir(), capture_output=True, encoding='utf-8')
 
         # check standard output
         # TODO combine the two tests (the one below) in one fonction
@@ -286,7 +310,6 @@ class Test:
 
 
     def test_foregroundjobs(self):
-        print('--- TESTING FOREGROUND JOBS ---')
         self.test_simple_foregroundjob()
 
         self.test_wrongcmd()
@@ -326,7 +349,7 @@ class Test:
         shell.exec_command(cmd, timeout=1)
         time.sleep(0.5) # to be "sure" that the shell command executed
         if dir.name != shell.get_cwd():
-            raise AssertionError('Changing directory failed: the directory shouldbe {} but it is {}'.format(dir, shell.get_cwd()))
+            raise AssertionError('Changing directory failed: the directory should be {} but it is {}'.format(dir, shell.get_cwd()))
         shell.exit()
 
         # Test non-existing directory
@@ -338,7 +361,6 @@ class Test:
 
 
     def test_builtin(self):
-        print('--- TESTING BUITIN COMMANDS ---')
         self.test_builtin_exit()
         self.test_builtin_cd()
 
@@ -357,7 +379,7 @@ class Test:
         shell = Shell(self.shell_exec)
 
         # Test file creation and correct content
-        cmd = Cmd(['echo', '-e', 'First line\\nSecond line\\nThird line'])
+        cmd = Cmd(['echo', '-e', '"First line\\nSecond line\\nThird line"'])
         def run_cmd():
             cmd_shell = cmd + ['>', out_file]
             shell.exec_command(cmd_shell, timeout=1)
@@ -380,6 +402,51 @@ class Test:
 
         shell.exit()
 
+    @test
+    def test_pipe(self):
+        # Working commands
+        cmd = Cmd(['ls', '-alh', '/tmp', '|', 'wc', '-l'])
+        shell = Shell(self.shell_exec)
+        shell.exec_commands([cmd])
+        self._test_command_results(cmd, shell, test_stdout='include', test_stderr='empty', test_return=False, test_in_shell=True)
+
+        # Unsuccessful command
+        cmd = Cmd(['cat', 'nonExistingFile', '|', 'grep', 'word'])
+        shell = Shell(self.shell_exec)
+        shell.exec_commands([cmd])
+        self._test_command_results(cmd, shell, test_stdout='notest', test_stderr='include', test_return=False, test_in_shell=True)
+
+    @test
+    def test_background_jobs(self):
+        # Check possibility to have two processes running
+        cmd_back = Cmd(['sleep', '2', '&'])
+        cmd_fore = Cmd(['sleep', '1'])
+        shell = Shell(self.shell_exec)
+        shell.exec_command(cmd_back, wait_cmd=False)
+        shell.exec_command(cmd_fore, wait_cmd=False)
+        time.sleep(0.2)
+        children = shell.get_children()
+        assert len(children) == 2, 'After the following commands:\n{}\n{}\n, two processes were expected, the following processes were found: {}'.format(
+            cmd_back, cmd_fore, children
+        )
+        shell.wait_children()  # also test zombies
+        shell.exit()
+
+        # TODO: test return error message or error value ?
+
+
+    @test
+    def test_SIGTERM_SIGQUIT(self):
+        shell = Shell(self.shell_exec)
+        time.sleep(0.1) # To be sure that handlers are configured
+        shell.send_signal(signal.SIGTERM)
+        shell.send_signal(signal.SIGQUIT)
+        time.sleep(0.1) # To be sure that signals are treated
+        assert shell.is_alive(), "SIGTERM and SIGQUIT sent, the shell should ignore those signals but it died"
+        shell.exit()
+
+
+
 if __name__ == "__main__":
 
     if len(sys.argv) < 2:
@@ -387,24 +454,25 @@ if __name__ == "__main__":
         exit(1)
 
     t = Test(sys.argv[1])
+    print('--- TESTING BUITIN COMMANDS ---')
     t.test_builtin()
+    print('--- TESTING FOREGROUND JOBS ---')
     t.test_foregroundjobs()
+    print('--- TESTING I/O redirection (inc. pipes) ---')
     t.test_stdout_redirect()
+    t.test_pipe()
+    print('--- TESTING background jobs and signals ---')
+    t.test_background_jobs()
+    t.test_SIGTERM_SIGQUIT()
 
     sys.exit(test_failed)
 
 
     # # Pipe
-    # execute_commandon_shell(tp_dir, tp_shell_name, b'ls -alh | wc -l')
     # # Background job where shell exit right after
     # execute_commandon_shell(tp_dir, tp_shell_name, b'sleep 2 &', 5)
-    # # Background job where shell wait too
-    # execute_commandon_shell(tp_dir, tp_shell_name, b'sleep 2 &\nsleep 3', 6)
     # # Background job exit code
     # execute_commandon_shell(tp_dir, tp_shell_name, b'ls clkscncqp &')
-    # # Background job SIGTERM (should be ignored)
-    # #execute_commandon_shell(tp_dir, tp_shell_name, b'sleep 2 &\nsleep 1\nkill -SIGTERM {pid}', 6)
-    # # Background job SIGQUIT (should be ignored)
-    # #execute_commandon_shell(tp_dir, tp_shell_name, b'sleep 2 &\nsleep 1\nkill -SIGQUIT {pid}', 6)
+
     # # Background job SIGHUP
     # #execute_commandon_shell(tp_dir, tp_shell_name, b'sleep 10 &\nsleep 1\nkill -SIGHUP {pid}', 6)
