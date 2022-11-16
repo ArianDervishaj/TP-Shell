@@ -9,6 +9,7 @@
 # - the shell is up and waiting for an input
 # - the shell has processed a command
 # - the shell as received and treated / ignored a signal (could be done by launching a command and waiting for it to be processed)
+# -> check shell state is sleep ?
 
 import filecmp
 import logging
@@ -113,7 +114,7 @@ class Shell:
 
 
     # TODO: move out of Shell ?
-    def check_ophans(self, cmd: Cmd):
+    def check_orphan(self, cmd: Cmd):
         """ Check if an orphan process (child of 1) was executed with cmd
         cmd: if None the tested command will be the last executed command
         """
@@ -125,8 +126,9 @@ class Shell:
         str_cmd = str(cmd)
         init_ps = psutil.Process(1)
         for p in init_ps.children():
-            if p.cmdline() == str_cmd:
-                raise AssertionError('The command "{}" seem to be a child of process 1'.format(str_cmd))
+            init_cmd = Cmd(p.cmdline())
+            if str(init_cmd) == str_cmd:
+                raise AssertionError('The command "{}" seem to be a child of process 1 -> orphelin process'.format(str_cmd))
 
 
     def wait_children(self, test_zombies: bool = True, timeout: int = 3):
@@ -434,6 +436,8 @@ class Test:
 
         # TODO: test return error message or error value ?
 
+        # TODO: Test double background jobs? (par souci de simplicité, on interdira d’avoir plus d’un job en tâche de fond à la fois)
+
 
     @test
     def test_SIGTERM_SIGQUIT(self):
@@ -442,9 +446,29 @@ class Test:
         shell.send_signal(signal.SIGTERM)
         shell.send_signal(signal.SIGQUIT)
         time.sleep(0.1) # To be sure that signals are treated
-        assert shell.is_alive(), "SIGTERM and SIGQUIT sent, the shell should ignore those signals but it died"
+        assert shell.is_alive(), 'SIGTERM and SIGQUIT sent, the shell should ignore those signals but it died'
         shell.exit()
 
+
+    @test
+    def test_SIGHUP(self):
+        # Launch two commands and send sighup
+        shell = Shell(self.shell_exec)
+        time.sleep(0.1) # To be sure that handlers are configured
+        shell.exec_command(Cmd(['sleep', '2', '&']), wait_cmd=False)
+        shell.exec_command(Cmd(['sleep', '3']), wait_cmd=False)
+        time.sleep(0.1) # To be sure that commands are executed
+        shell.send_signal(signal.SIGHUP)
+        time.sleep(0.1) # To be sure that signal was treated
+
+        #Check that shell is dead
+        if shell.is_alive():
+            shell.exit()
+            raise AssertionError('SIGHUP sent but shell was still alive')
+
+        # Check that the two processes are dead as well
+        shell.check_orphan(Cmd(['sleep', '2']))
+        shell.check_orphan(Cmd(['sleep', '3']))
 
 
 if __name__ == "__main__":
@@ -464,7 +488,8 @@ if __name__ == "__main__":
     print('--- TESTING background jobs and signals ---')
     t.test_background_jobs()
     t.test_SIGTERM_SIGQUIT()
-
+    #TODO: test SIGINT
+    t.test_SIGHUP()
     sys.exit(test_failed)
 
 
