@@ -7,7 +7,7 @@
 # Author: Guillaume Chanel <guillaume.chanel@unige.ch>
 # TODO: There are many sleep functions called to wait for the shell. Would there be a way to be sure that:
 # - the shell is up and waiting for an input
-# - the shell has processed a command
+# - the shell has executed a command (i.e. the command is running but not finished)
 # - the shell as received and treated / ignored a signal (could be done by launching a command and waiting for it to be processed)
 # -> check shell state is sleep ?
 
@@ -32,7 +32,7 @@ def print_usage():
 
 
 def find_last_trace(trace, f):
-    """Follow a trace to find the last onebut still belonging to file f
+    """Follow a trace to find the last one still belonging to file f
     trace: a starting trace
     f: a file as a full absolute path
     """
@@ -99,10 +99,6 @@ class Shell:
         # No ouputs so far...
         self.stdout = None
         self.stderr = None
-
-
-    def is_alive(self):
-        return self.shell_process.poll() == None
 
 
     def get_children(self):
@@ -215,6 +211,7 @@ class Shell:
 
     def get_cwd(self):
         return self.shell_ps.cwd()
+
 
     def is_running(self):
         return self.shell_process.poll() == None
@@ -446,8 +443,26 @@ class Test:
         shell.send_signal(signal.SIGTERM)
         shell.send_signal(signal.SIGQUIT)
         time.sleep(0.1) # To be sure that signals are treated
-        assert shell.is_alive(), 'SIGTERM and SIGQUIT sent, the shell should ignore those signals but it died'
+        assert shell.is_running(), 'SIGTERM and SIGQUIT sent, the shell should ignore those signals but it died'
         shell.exit()
+
+
+    @test
+    def test_SIGINT(self):
+        # Launch foreground job and send SIGINT
+        shell = Shell(self.shell_exec)
+        shell.exec_command(Cmd(['sleep', '5']), wait_cmd=False)
+        time.sleep(0.1)  # wait for the process to be spawn
+        shell.send_signal(signal.SIGINT)
+        time.sleep(0.1)  # Wait for the signal to be received
+
+        # Check that SIGINT did not kill the shell
+        assert shell.is_running(), 'SIGINT seems to have terminated the shell, it should only terminate the child process by redirection'
+
+        # check that the signal killed the foreground command in less than a second
+        shell.wait_children(timeout=1)
+
+        # TODO: should I test Ctrl+C ? Normally not as it simply sends SIGINT.
 
 
     @test
@@ -462,7 +477,7 @@ class Test:
         time.sleep(0.1) # To be sure that signal was treated
 
         #Check that shell is dead
-        if shell.is_alive():
+        if shell.is_running():
             shell.exit()
             raise AssertionError('SIGHUP sent but shell was still alive')
 
@@ -488,16 +503,12 @@ if __name__ == "__main__":
     print('--- TESTING background jobs and signals ---')
     t.test_background_jobs()
     t.test_SIGTERM_SIGQUIT()
-    #TODO: test SIGINT
+    t.test_SIGINT()
     t.test_SIGHUP()
+
     sys.exit(test_failed)
 
-
-    # # Pipe
     # # Background job where shell exit right after
     # execute_commandon_shell(tp_dir, tp_shell_name, b'sleep 2 &', 5)
     # # Background job exit code
     # execute_commandon_shell(tp_dir, tp_shell_name, b'ls clkscncqp &')
-
-    # # Background job SIGHUP
-    # #execute_commandon_shell(tp_dir, tp_shell_name, b'sleep 10 &\nsleep 1\nkill -SIGHUP {pid}', 6)
