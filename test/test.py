@@ -378,7 +378,7 @@ class Test:
         shell = Shell(self.shell_exec)
 
         # Test file creation and correct content
-        cmd = Cmd(['echo', '-e', '"First line\\nSecond line\\nThird line"'])
+        cmd = Cmd(['echo', '-e', 'First line\\nSecond line\\nThird line'])
         def run_cmd():
             cmd_shell = cmd + ['>', out_file]
             shell.exec_command(cmd_shell, timeout=1)
