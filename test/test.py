@@ -22,6 +22,8 @@ import time
 from pathlib import Path
 import psutil
 from colorama import Fore
+import random
+import string
 
 
 def print_usage():
@@ -155,7 +157,7 @@ class Shell:
                 # Kill the children and raise timeout error
                 for c in children:
                     c.kill()
-                raise psutil.TimeoutExpired('The process took more than the timeout ({}s) to terminate (last command executed: {})'.format(duration, self.last_cmd))
+                raise TimeoutError('The process took more than timeout ({:.2f}s) to terminate (last command executed: {})'.format(duration, self.last_cmd))
 
 
     def exec_command(self, command: Cmd, wait_cmd: bool = True, timeout: int = 3):
@@ -401,6 +403,7 @@ class Test:
 
         shell.exit()
 
+
     @test
     def test_pipe(self):
         # Working commands
@@ -414,6 +417,21 @@ class Test:
         shell = Shell(self.shell_exec)
         shell.exec_commands([cmd])
         self._test_command_results(cmd, shell, test_stdout='notest', test_stderr='include', test_return=False, test_in_shell=True)
+
+        # Test a pipe with a high quantity of data
+        # The idea is to ensure that both processes are running concurrently
+        # If not, the writing end of the pipe should block since its capacity has been exceeded and no read occurs
+        LINUX_PIPE_SIZE = 65536
+        with tempfile.NamedTemporaryFile("wt") as f:
+            f.writelines(random.choices(string.ascii_letters, k=2*LINUX_PIPE_SIZE))
+            cmd = Cmd(['cat', f.name, '|', 'grep', 'word'])
+            shell = Shell(self.shell_exec)
+            try:
+                shell.exec_commands([cmd])
+            except TimeoutError as e:
+                raise TimeoutError(str(e) + '. This happened when trying to communicate more data than the size of the pipe. Probably the write side of the pipe blocked because the other side was not read.')
+
+
 
     @test
     def test_background_jobs(self):
