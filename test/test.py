@@ -24,6 +24,7 @@ import psutil
 from colorama import Fore
 import random
 import string
+import argparse
 
 
 def print_usage():
@@ -254,7 +255,8 @@ class Test:
         shell_stdout = shell.read_stdout()
         if test_stdout == 'include':
             if not real.stdout in shell_stdout:
-                raise AssertionError('The standard output of the command "{}" does not include the following correct result:\n{}\cmd result in shell:\n{}'.format(' '.join(cmd), real.stdout, shell_stdout))
+                breakpoint()
+                raise AssertionError('The standard output of the command "{}" does not include the following correct result:\n{}\ncmd result in shell:\n{}'.format(' '.join(cmd), real.stdout, shell_stdout))
         elif test_stdout == 'empty':
             if shell_stdout:
                 raise AssertionError('The standard error of the command "{}" shouldbe empty but contains:\n{}'.format(shell_stderr))
@@ -263,7 +265,7 @@ class Test:
         shell_stderr = shell.read_stderr()
         if test_stderr == 'include':
             if not real.stderr in shell_stderr:
-                raise AssertionError('The standard output of the command "{}" does not include the following correct result:\n{}\cmd result in shell:\n{}'.format(' '.join(cmd), real.stderr, shell_stderr))
+                raise AssertionError('The standard output of the command "{}" does not include the following correct result:\n{}\ncmd result in shell:\n{}'.format(' '.join(cmd), real.stderr, shell_stderr))
         elif test_stdout == 'empty':
             if shell_stderr:
                 raise AssertionError('The standard error of the command "{}" shouldbe empty but contains:\n{}'.format(shell_stderr))
@@ -506,11 +508,13 @@ class Test:
 
 if __name__ == "__main__":
 
-    if len(sys.argv) < 2:
-        print_usage()
-        exit(1)
-
-    t = Test(sys.argv[1])
+    parser = argparse.ArgumentParser(
+                    prog='test',
+                    description='Tests the shell TP')
+    parser.add_argument('filename', help='the name of the shell executable')
+    args = parser.parse_args()
+ 
+    t = Test(args.filename)
     print('--- TESTING BUITIN COMMANDS ---')
     t.test_builtin()
     print('--- TESTING FOREGROUND JOBS ---')
