@@ -27,18 +27,4 @@ Le shell développé devra être capable de :
 - Une gestion stricte des processus est requise pour éviter les zombies.
 - Le parsing des commandes et la gestion des redirections et pipes doivent être réalisés conformément à des règles spécifiques.
 
-### Détails du TP
-
-1. **Création de processus et gestion des jobs**  
-   Le shell doit créer un processus pour chaque commande exécutée. Il gérera également ces processus en évitant les zombies et en affichant les codes de sortie des programmes lorsqu'ils se terminent normalement.
-
-2. **Commandes internes (builtin)**  
-   Les commandes `exit` et `cd` doivent être implémentées en tant que commandes internes au shell, permettant de quitter proprement le shell ou de modifier le répertoire courant.
-
-3. **Redirection et Pipes**  
-   Le shell doit prendre en charge les redirections (avec `>` et `>>`) pour diriger les flux d'entrée/sortie vers des fichiers et implémenter les pipes pour enchaîner les commandes.
-
-4. **Jobs en tâche de fond et signaux**  
-   Le shell doit permettre d'exécuter un job en tâche de fond en utilisant le symbole `&`. De plus, il doit gérer correctement les signaux pour permettre une interaction fluide avec les processus.
-
 Vous pouvez retrouver le pdf [ici](/TP_shell.pdf)
