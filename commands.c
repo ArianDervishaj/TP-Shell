@@ -20,16 +20,22 @@ bool is_built_in(cmd_t *cmd) {
 }
 
 void exec_builtin(cmd_t *cmd) {
+
   if (strcmp(cmd->argv[0], "cd") == 0) {
-    if (cmd->argv[1] == NULL) {
+    
+    if (cmd->argv[1] == NULL) { // Pas d'argument au cd
       fprintf(stderr, "cd: missing operand\n");
+
     } else if (chdir(cmd->argv[1]) != 0) {
       perror("cd");
     }
+  
   } else if (strcmp(cmd->argv[0], "exit") == 0) {
     exit(0);
+
   } else if (strcmp(cmd->argv[0], "help") == 0) {
-    printf("Available built-in commands: cd, exit, help\n");
+    printf("Available built-in commands: cd, exit, help, echo\n");
+
   } else if (strcmp(cmd->argv[0], "echo") == 0) {
     for (int i = 1; cmd->argv[i] != NULL; i++) {
       printf("%s ", cmd->argv[i]);
